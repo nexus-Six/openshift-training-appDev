@@ -1,0 +1,353 @@
+= Further Steps in OpenShift 3.9
+Daniel Brintzinger (@redhat.com)
+:scrollbar:
+:data-uri:
+:toc: left
+:numbered:
+:icons: font
+
+image::http://www.rhpet.de/pictures/OpenShift-Workshop-banner.png[OpenShift-Workshop]
+
+== Introduction
+
+In this Lab you will get additional hands-on introduction to the OpenShift Container Platform. You will learn how to do advanced deployment techniques and application lifecycle management.
+
+Please see <<Appendix: OpenShift Introduction>> if you are not aware of the architecture and components of OpenShift. *You should read this first if you are not familiar with OpenShift!*
+
+Please have a look into the <<Appendix: Lab Environment Information>> for more information about the Lab environment, like passwords, IP addresses and so on.
+
+Have fun and we hope you enjoy the Lab :-)
+
+=== How to access the Lab Environment
+
+To obtain your IP address from the SSH gateway please look for your Seat ID http://seats.rhpet.de[here^].
+
+Login into the ssh gateway with the user `root` and the password you will find in the <<Appendix: Lab Environment Information>>.
+
+----
+[user@host ~]$ ssh root@<your IP address from the seat to GUID page>
+
+The authenticity of host '129.213.15.244 (129.213.15.244)' can't be established.
+ECDSA key fingerprint is SHA256:ztRJAqdV6iu+yRrrP42PaGm107SEMPdYVjGXZuL3EAo.
+ECDSA key fingerprint is MD5:23:22:d1:14:fa:1d:84:29:ea:dd:02:9f:94:b8:a8:87.
+Are you sure you want to continue connecting (yes/no)? yes
+Warning: Permanently added '129.213.15.244' (ECDSA) to the list of known hosts.
+root@129.213.15.244's password: 
+Last failed login: Fri Jun  1 15:29:21 EDT 2018 from 63.24.140.28 on ssh:notty
+There were 8 failed login attempts since the last successful login.
+Last login: Tue May 29 15:17:13 2018 from 44.234.187.19
+#####################################################################################
+##                                                                                 ##
+##          Welcome to Red Hat Openshift Container Platform 3.9 workshop           ##
+##                                                                                 ##
+#####################################################################################
+Information about Your current environment:
+
+Your GUID: <GUID>
+OCP WEB UI access via IP: https://masterprod-<GUID>.generic.opentlc.com:8443
+Wildcard FQDN for apps: *.apps-<GUID>.generic.opentlc.com
+
+[root@workstation-<GUID> ~]# 
+----
+
+==== Accessing the OpenShift Web Console
+
+You can connect to the OpenShift web UI by clicking the link on the http://seats.rhpet.de[Seats to GUID^] page. Please accept the self-signed certificate.
+
+If you want to know if your Webbrowser is supported by OpenShift, please have a look at https://access.redhat.com/articles/2176281[OpenShift Container Platform Tested Integrations^].
+
+== Getting started with the OpenShift CLI and the Webinterface
+
+Using the OpenShift Container Platform command line interface (CLI), you can create applications and manage OpenShift Container Platform projects from a terminal. The CLI is ideal in situations where you are:
+
+* Working directly with project source code.
+
+* Scripting OpenShift Container Platform operations.
+
+* Restricted by bandwidth resources and cannot use the web console.
+
+The CLI is available using the `oc` command:
+----
+$ oc <command>
+----
+
+=== Basic Setup and Login
+
+The `oc login` command is the best way to initially set up the CLI, and it serves as the entry point for most users. The interactive flow helps you establish a session to an OpenShift Container Platform server with the provided credentials. The information is automatically saved in a CLI configuration file that is then used for subsequent commands.
+
+Login into OpenShift Prod environment as `admin` user with the password `openshift`:
+----
+[root@workstation-<GUID> ~]# oc login https://master-prod.example.com:8443
+
+The server uses a certificate signed by an unknown authority.
+You can bypass the certificate check, but any data you send to the server could be intercepted by others.
+Use insecure connections? (y/n): y
+
+Authentication required for https://master-prod.example.com:8443 (openshift)
+Username: admin
+Password: openshift
+Login successful.
+
+You have access to the following projects and can switch between them with 'oc project <projectname>':
+
+  * default
+    kube-public
+    kube-service-catalog
+    kube-system
+    logging
+    management-infra
+    openshift
+    openshift-ansible-service-broker
+    openshift-infra
+    openshift-node
+    openshift-template-service-broker
+    openshift-web-console
+
+Using project "default".
+----
+
+You will notice a lot of projects already. There will be less projects in a freshly installed OpenShift environment.
+
+You can log out of the CLI using the `oc logout` command. But we don't do this now.
+
+NOTE: You are running commands as `root` in this lab environment. It is unusual to use the `oc` command as root. It is common to install `oc` on your workstation or notebook. You can get the OpenShift client tools for your operating system https://docs.openshift.com/container-platform/3.9/cli_reference/get_started_cli.html[here^].
+
+=== Blue-Green Deployment
+
+A Blue-Green deployments runs two different versions of an applications with a load balancer in front that can be used to switch traffic between the versions.
+
+Create a new project
+
+----
+[root@workstation-<GUID>~]# oc new-project strategies 
+----
+
+Deploy 9 replicas of the hello-word app
+
+----
+[root@workstation-<GUID>~]# oc run blue --image=openshift/hello-openshift --replicas=9 
+----
+
+Set the environment variable inside the deployment config
+
+----
+[root@workstation-<GUID>~]# oc set env dc/blue RESPONSE="Hello from Blue" 
+----
+
+Expose the deployment internally in the cluster
+
+----
+[root@workstation-<GUID>~]# oc expose dc/blue --port=8080 
+----
+
+Exposes the application to be available outside the cluster under hello route
+
+----
+[root@workstation-<GUID>~]# oc expose svc/blue --name=bluegreen
+----
+
+
+Create Green application
+
+----
+[root@workstation-<GUID>~]# oc run green --image=openshift/hello-openshift --replicas=9
+[root@workstation-<GUID>~]# oc set env dc/green RESPONSE="Hello from Green"
+[root@workstation-<GUID>~]# oc expose dc/green --port=8080
+----
+
+Switch traffic to blue
+
+----
+[root@workstation-<GUID>~]# oc set route-backends bluegreen blue=100 green=0
+
+----
+
+Test traffic distribution in a new shell :
+----
+[root@workstation-<GUID>~]# while true; do curl http://bluegreen-strategies.devapps-<GUID>.generic.opentlc.com/; sleep .2; done
+----
+
+Switch traffic to green and watch the other shell outputs
+
+----
+[root@workstation-<GUID>~]# oc set route-backends bluegreen blue=0 green=100
+
+----
+
+
+=== Canary Deployment
+
+The canary deployment strategy means rolling out a new application version in small incremental steps.
+----
+[root@workstation-<GUID>~]# oc run prod --image=openshift/hello-openshift --replicas=9
+[root@workstation-<GUID>~]# oc set env dc/prod RESPONSE="Hello from Prod"
+[root@workstation-<GUID>~]# oc expose dc/prod --port=8080
+----
+
+Expose the deployment internally in the cluster
+
+----
+[root@workstation-<GUID>~]# oc expose svc/prod
+----
+
+Deploy the new version.
+----
+[root@workstation-<GUID>~]# oc run canary --image=openshift/hello-openshift
+[root@workstation-<GUID>~]# oc set env dc/canary RESPONSE="Hello from Canary"
+[root@workstation-<GUID>~]# oc expose dc/canary --port=8080
+[root@workstation-<GUID>~]# oc set route-backends prod prod=100 canary=0
+----
+
+Send 10 % of traffic to the new application ( canary )
+----
+[root@workstation-<GUID>~]# oc set route-backends prod prod=90 canary=10
+----
+
+Test traffic distribution in a new shell :
+----
+[root@workstation-<GUID>~]# while true; do curl http://prod-strategies.devapps-<GUID>>.generic.opentlc.com/; sleep .2; done
+----
+
+
+
+=== Rolling Deployment
+
+Rolling deployment ist the default strategy which scales the old application version down while scaling the new
+application version up
+
+
+Deploy the new version.
+----
+[root@workstation-<GUID>~]# oc run rolling --image=openshift/hello-openshift --replicas=9
+[root@workstation-<GUID>~]# oc expose dc/rolling --port 8080
+[root@workstation-<GUID>~]# oc expose svc/rolling
+----
+
+
+Trigger new deployment.
+----
+[root@workstation-<GUID>~]# oc set env dc/rolling RESPONSE="Hello from new roll"
+----
+
+Check the rollout in the OpenShift Webconsole
+
+
+=== DevOps Workshop
+
+Head on over to http://devops-rhsummit.b9ad.pro-us-east-1.openshiftapps.com/index.html
+
+
+
+
+== Appendix: OpenShift Introduction
+
+=== What is OpenShift ?
+
+OpenShift Online is Red Hat’s public cloud application development and hosting platform that automates the provisioning, management and scaling of applications so that you can focus on writing the code for your business, startup, or big idea.
+
+Official documentation for https://docs.openshift.com/container-platform/3.9/welcome/index.html[OpenShift Container Platform^]
+
+=== Overview
+
+OpenShift v3 is a layered system designed to expose underlying Docker-formatted container image and Kubernetes concepts as accurately as possible, with a focus on easy composition of applications by a developer. For example, install Ruby, push code, and add MySQL.
+
+Unlike OpenShift v2, more flexibility of configuration is exposed after creation in all aspects of the model. The concept of an application as a separate object is removed in favor of more flexible composition of "services", allowing two web containers to reuse a database or expose a database directly to the edge of the network.
+
+=== What are the Layers?
+
+The Docker service provides the abstraction for packaging and creating Linux-based, lightweight https://docs.openshift.com/container-platform/3.9/architecture/core_concepts/containers_and_images.html#containers[container images^]. Kubernetes provides the https://docs.openshift.com/container-platform/3.9/architecture/infrastructure_components/kubernetes_infrastructure.html#architecture-infrastructure-components-kubernetes-infrastructure[cluster management^] and orchestrates containers on multiple hosts.
+
+OpenShift Container Platform adds:
+
+* Source code management, https://docs.openshift.com/container-platform/3.9/architecture/core_concepts/builds_and_image_streams.html#builds[builds^], and https://docs.openshift.com/container-platform/3.9/architecture/core_concepts/deployments.html#architecture-core-concepts-deployments[deployments^] for developers
+
+* Managing and promoting https://docs.openshift.com/container-platform/3.9/architecture/core_concepts/containers_and_images.html#docker-images[images^] at scale as they flow through your system
+
+* Application management at scale
+
+* Team and user tracking for organizing a large developer organization
+
+image::http://www.rhpet.de/pictures/OpenShift-Architecture.png[OpenShift Architecture]
+
+=== What is the OCP Architecture?
+
+OpenShift Container Platform has a microservices-based architecture of smaller, decoupled units that work together. It runs on top of a https://docs.openshift.com/container-platform/3.9/architecture/infrastructure_components/kubernetes_infrastructure.html#architecture-infrastructure-components-kubernetes-infrastructure[Kubernetes cluster^], with data about the objects stored in https://docs.openshift.com/container-platform/3.9/architecture/infrastructure_components/kubernetes_infrastructure.html#master[etcd^], a reliable clustered key-value store. Those services are broken down by function:
+
+* https://docs.openshift.com/container-platform/3.9/rest_api/index.html#rest-api-index[REST APIs^], which expose each of the https://docs.openshift.com/container-platform/3.9/architecture/core_concepts/index.html#architecture-core-concepts-index[core objects^].
+
+* Controllers, which read those APIs, apply changes to other objects, and report status or write back to the object.
+
+Users make calls to the REST API to change the state of the system. Controllers use the REST API to read the user’s desired state, and then try to bring the other parts of the system into sync. For example, when a user requests a https://docs.openshift.com/container-platform/3.9/architecture/core_concepts/builds_and_image_streams.html#builds[build^] they create a "build" object. The build controller sees that a new build has been created, and runs a process on the cluster to perform that build. When the build completes, the controller updates the build object via the REST API and the user sees that their build is complete.
+
+The controller pattern means that much of the functionality in OpenShift Container Platform is extensible. The way that builds are run and launched can be customized independently of how images are managed, or how https://docs.openshift.com/container-platform/3.9/architecture/core_concepts/deployments.html#architecture-core-concepts-deployments[deployments^] happen. The controllers are performing the "business logic" of the system, taking user actions and transforming them into reality. By customizing those controllers or replacing them with your own logic, different behaviors can be implemented. From a system administration perspective, this also means the API can be used to script common administrative actions on a repeating schedule. Those scripts are also controllers that watch for changes and take action. OpenShift Container Platform makes the ability to customize the cluster in this way a first-class behavior.
+
+To make this possible, controllers leverage a reliable stream of changes to the system to sync their view of the system with what users are doing. This event stream pushes changes from etcd to the REST API and then to the controllers as soon as changes occur, so changes can ripple out through the system very quickly and efficiently. However, since failures can occur at any time, the controllers must also be able to get the latest state of the system at startup, and confirm that everything is in the right state. This resynchronization is important, because it means that even if something goes wrong, then the operator can restart the affected components, and the system double checks everything before continuing. The system should eventually converge to the user’s intent, since the controllers can always bring the system into sync.
+
+=== Core Concepts
+
+The following topics provide high-level, architectural information on core concepts and objects you will encounter when using OpenShift Container Platform. Many of these objects come from Kubernetes, which is extended by OpenShift Container Platform to provide a more feature-rich development lifecycle platform.
+
+* https://docs.openshift.com/container-platform/3.9/architecture/core_concepts/containers_and_images.html#architecture-core-concepts-containers-and-images[Containers and images^] are the building blocks for deploying your applications.
+
+* https://docs.openshift.com/container-platform/3.9/architecture/core_concepts/pods_and_services.html[Pods and services^] allow for containers to communicate with each other and proxy connections.
+
+* https://docs.openshift.com/container-platform/3.9/architecture/core_concepts/projects_and_users.html[Projects and users^] provide the space and means for communities to organize and manage their content together.
+
+* https://docs.openshift.com/container-platform/3.9/architecture/core_concepts/builds_and_image_streams.html[Builds and image streams^] allow you to build working images and react to new images.
+
+* https://docs.openshift.com/container-platform/3.9/architecture/core_concepts/deployments.html[Deployments^] add expanded support for the software development and deployment lifecycle.
+
+* https://docs.openshift.com/container-platform/3.9/architecture/networking/routes.html[Routes^] announce your service to the world.
+
+* https://docs.openshift.com/container-platform/3.9/architecture/core_concepts/templates.html[Templates^] allow for many objects to be created at once based on customized parameters.
+
+* https://docs.openshift.com/container-platform/3.9/architecture/additional_concepts/storage.html[Persistent Storage^] allow to save permanent data in a container.
+
+Click on the links above if you want more information about the respective topic.
+
+== Appendix: Lab Environment Information
+
+You have nine VMs for your own use. Only the SSH Gateway and the Masternodes are reachable from the internet. All others can only be accessed through the SSH Gateway.
+
+To get your GUID, external FQDN, Link to the OpenShift Webinterface and IP address for the SSH Gateway VM, please goto the http://seats.rhpet.de[Seat-to-GUID overview Page^] and search your Seat-ID.
+
+[cols="2,3,2,2", options="header"]
+|===
+| Name| external FQDN | internal FQDN | internal IP
+| SSH Gateway | workstation-GUID.generic.opentlc.com | none | 192.168.0.5 & 192.168.1.5
+| Dev Master | masterdev-GUID.generic.opentlc.com | master-dev.example.com | 192.168.1.10
+| Dev Compute Node 1 | none | node01dev.example.com | 192.168.1.11
+| Dev Compute Node 2 | none | node02dev.example.com | 192.168.1.12
+| Dev Compute Node 3 | none | node03dev.example.com | 192.168.1.13
+| Prod Master | masterprod-GUID.generic.opentlc.com | master-prod.example.com | 192.168.0.10
+| Prod Compute Node 1 | none | node01prod.example.com | 192.168.0.11
+| Prod Compute Node 2 | none | node02prod.example.com | 192.168.0.12
+| Prod Compute Node 3 | none | node03prod.example.com | 192.168.0.13
+|===
+
+[cols="3*", options="header"]
+|===
+| Name | Password | Role
+| root | <ask the instructor> | root user for all VMs
+| admin | openshift | OSCP Administrator
+| student | openshift | Developer & GIT User 
+|=== 
+
+*Wildcard FQDN for apps in the OpenShift Prod environment:* `*.apps-GUID.generic.opentlc.com`
+
+WARNING: There is no public DNS resolution for apps for the OpenShift Dev environment.
+
+=== Additional Services
+
+Don't forget to replace the GUID string with your `GUID` from http://seats.rhpet.de[here^].
+
+*GIT Server*
+
+Web: http://gogs-lab-infra.devapps-GUID.generic.opentlc.com
+
+Username: `student` +
+Password: `openshift`
+
+*Nexus Maven Repository*
+
+Web: http://nexus-lab-infra.devapps-GUID.generic.opentlc.com
