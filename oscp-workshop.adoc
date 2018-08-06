@@ -212,7 +212,7 @@ Test traffic distribution in a new shell :
 
 === Rolling Deployment
 
-Rolling deployment ist the default strategy which scales the old application version down while scaling the new
+Rolling deployment is the default strategy which scales the old application version down while scaling the new
 application version up
 
 
